@@ -1,11 +1,18 @@
 package ru.digitalhabbits.homework2;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 
 import javax.annotation.Nonnull;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.Exchanger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Phaser;
 
 import static java.lang.Runtime.getRuntime;
 import static java.nio.charset.Charset.defaultCharset;
@@ -19,21 +26,38 @@ public class FileProcessor {
         checkFileExists(processingFileName);
 
         final File file = new File(processingFileName);
-        // TODO: NotImplemented: запускаем FileWriter в отдельном потоке
+        ExecutorService fileWriterService = Executors.newFixedThreadPool(CHUNK_SIZE);
+        Exchanger<List<Pair<String, Integer>>> ex = new Exchanger<>();
+        Thread writeThread = new Thread(new FileWriter(resultFileName, ex));
+        writeThread.start();
+        LineProcessor lineProcessor = new LineCounterProcessor();
+        Phaser phaser = new Phaser(CHUNK_SIZE);
 
         try (final Scanner scanner = new Scanner(file, defaultCharset())) {
             while (scanner.hasNext()) {
-                // TODO: NotImplemented: вычитываем CHUNK_SIZE строк для параллельной обработки
+                List<String> list = new ArrayList<>();
+                List<Pair<String, Integer>> pairList = new ArrayList<>();
+                while (list.size() < CHUNK_SIZE && scanner.hasNext()) {
+                    list.add(scanner.nextLine());
+                }
 
-                // TODO: NotImplemented: обрабатывать строку с помощью LineProcessor. Каждый поток обрабатывает свою строку.
+                for (int i = 0; i < list.size(); i++) {
+                    int temp = i;
+                    fileWriterService.submit(() -> {
+                        pairList.set(temp, lineProcessor.process(list.get(temp)));
+                    });
+                    phaser.arrive();
+                }
 
-                // TODO: NotImplemented: добавить обработанные данные в результирующий файл
+                phaser.arriveAndAwaitAdvance();
+                ex.exchange(pairList);
             }
-        } catch (IOException exception) {
+        } catch (IOException | InterruptedException exception) {
             logger.error("", exception);
         }
 
-        // TODO: NotImplemented: остановить поток writerThread
+        writeThread.interrupt();
+        fileWriterService.shutdown();
 
         logger.info("Finish main thread {}", Thread.currentThread().getName());
     }

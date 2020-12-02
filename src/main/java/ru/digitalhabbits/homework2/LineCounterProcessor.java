@@ -23,8 +23,10 @@ public class LineCounterProcessor
     public Pair<String, Integer> process(@Nonnull String line) {
         randomSleep();
         // TODO: NotImplemented: подсчет кол-ва символов в строке + произвольная задержка randomSleep()
-        return null;
+        int count = line.toCharArray().length;
+        return Pair.of(line, count);
     }
+
 
     private void randomSleep() {
         try {
